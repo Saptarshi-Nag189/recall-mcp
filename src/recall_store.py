@@ -147,6 +147,42 @@ def _to_match_query(query: str) -> str:
     return " OR ".join('"%s"' % t.replace('"', "") for t in terms)
 
 
+def _count(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+
+
+def _rare_terms(conn: sqlite3.Connection, terms: List[str], ceiling: int) -> List[str]:
+    """Terms appearing in at most *ceiling* entries.
+
+    A term found in one or two entries out of two dozen is doing real work; one found in half
+    the store is not. Cheap to compute - one COUNT per term against the FTS index.
+    """
+    rare = []
+    for t in terms:
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM entries_fts WHERE entries_fts MATCH ?",
+                ('"%s"' % t.replace('"', ""),),
+            ).fetchone()[0]
+        except sqlite3.OperationalError:
+            continue
+        if 0 < n <= ceiling:
+            rare.append(t.lower())
+    return rare
+
+
+def _question_has(entry: Dict[str, Any], terms: List[str]) -> bool:
+    """True when the entry's question or tags carry one of *terms*.
+
+    Question and tags describe what an entry is ABOUT. The answer and evidence often mention a
+    word in passing, which is not the same thing and is how irrelevant entries surfaced.
+    """
+    if not terms:
+        return False
+    blob = (entry.get("question", "") + " " + (entry.get("tags", "") or "")).lower()
+    return any(t in blob for t in terms)
+
+
 def add(
     question: str,
     answer: str,
@@ -249,11 +285,25 @@ def search(
 
         if len(terms) > 1:
             multi = [d for d in scored if d["_hits"] >= 2]
-            # No fallback to single-term hits for a multi-word query. Returning the best of a
-            # bad set is worse than saying nothing: "recall search" matched a pasted UI dump
-            # purely on the word "Search", which reads as an answer and is not one. An empty
-            # result is honest and cheap to act on.
-            scored = multi
+            if multi:
+                scored = multi
+            else:
+                # Nothing matched two terms. Rather than return nothing, accept a single-term
+                # match when that term is DISTINCTIVE - it appears in few entries, so it is
+                # carrying real meaning rather than being a common word.
+                #
+                # Straight rejection was too strict: "where do I configure antigravity" found
+                # nothing even though 'antigravity' appears in exactly one entry, which is
+                # obviously the right answer. But accepting any single-term match is what let
+                # "recall search" match a pasted UI dump on the word "Search". Rarity is the
+                # discriminator between the two.
+                # The rare term must appear in the QUESTION or TAGS, not merely somewhere in
+                # the body. "recall search" matched four entries when body text counted,
+                # because both words are rare in a small store yet appear incidentally in
+                # answers about search behaviour. Requiring the question to carry the term is
+                # what separates "this entry is about X" from "this entry mentions X".
+                rare = _rare_terms(conn, terms, ceiling=max(2, _count(conn) // 8))
+                scored = [d for d in scored if _question_has(d, rare)]
         # Rank: most terms matched, then most matched in the question, then bm25.
         scored.sort(key=lambda d: (-d["_hits"], -d["_qhits"], d.get("score", 0)))
         for d in scored:

@@ -66,8 +66,13 @@ def cmd_list(args):
 
     # Compact table: one line each, so a whole store fits on a screen.
     qw = max(F.width() - 22, 30)
-    print(F.c("dim", "%d entr%s   (● curated   ○ auto-extracted   ⊘ superseded)"
-                     % (len(entries), "y" if len(entries) == 1 else "ies")))
+    # Each legend marker carries its own colour: wrapping the whole line in dim made all three
+    # grey, so the legend did not match the rows it was describing.
+    print("%s   %s %s   %s %s   %s %s" % (
+        F.c("dim", "%d entr%s" % (len(entries), "y" if len(entries) == 1 else "ies")),
+        F.c("ev", "●"), F.c("dim", "curated"),
+        F.c("dim", "○"), F.c("dim", "auto-extracted"),
+        F.c("warn", "⊘"), F.c("dim", "superseded")))
     print(F.rule())
     for e in entries:
         print(F.table_row(e, qw))

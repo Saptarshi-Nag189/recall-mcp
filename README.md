@@ -178,6 +178,17 @@ Embeddings would buy fuzzy matching when query and entry share no words; explici
 most of that. If real use shows genuine recall misses, add embeddings as an optional second
 ranker — the schema does not change. Decide that on measured misses, not on assumption.
 
+## Tests
+
+```bash
+python3 test_recall.py     # 47 checks, stdlib only, uses a temp DB
+```
+
+Every case exists because something went wrong. Search quality is a balance between recall
+(finding what exists) and precision (not inventing relevance), and each past tweak to one
+silently damaged the other — relaxing the term floor to fix `"where do I configure
+antigravity"` immediately let irrelevant entries back in. The suite pins both ends.
+
 ## Known limits
 
 - **Keyword, not semantic.** A query sharing no words with an entry misses. Tags mitigate it.
