@@ -257,6 +257,56 @@ def search(
             conn.close()
 
 
+def list_entries(
+    limit: int = 0,
+    include_superseded: bool = False,
+    explicit_only: bool = False,
+    project: str = "",
+    order: str = "newest",
+    db_path: str = None,
+    conn: sqlite3.Connection = None,
+) -> List[Dict[str, Any]]:
+    """Every entry, newest first by default. ``limit=0`` means no limit.
+
+    Browsing, as opposed to searching: no MATCH, so nothing is filtered by keyword.
+    """
+    own = conn is None
+    conn = conn or connect(db_path)
+    try:
+        sql = "SELECT * FROM entries WHERE 1=1"
+        args: List[Any] = []
+        if not include_superseded:
+            sql += " AND superseded_by IS NULL"
+        if explicit_only:
+            sql += " AND confidence > 0"
+        if project:
+            sql += " AND project = ?"
+            args.append(project)
+        sql += " ORDER BY id ASC" if order == "oldest" else " ORDER BY id DESC"
+        if limit:
+            sql += " LIMIT ?"
+            args.append(limit)
+        return [_row_to_dict(r) for r in conn.execute(sql, args).fetchall()]
+    finally:
+        if own:
+            conn.close()
+
+
+def projects(db_path: str = None, conn: sqlite3.Connection = None) -> List[tuple]:
+    """(project, count) pairs, busiest first."""
+    own = conn is None
+    conn = conn or connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT COALESCE(NULLIF(project,''),'(none)') p, COUNT(*) n "
+            "FROM entries GROUP BY p ORDER BY n DESC"
+        ).fetchall()
+        return [(r["p"], r["n"]) for r in rows]
+    finally:
+        if own:
+            conn.close()
+
+
 def get(entry_id: int, db_path: str = None, conn: sqlite3.Connection = None):
     own = conn is None
     conn = conn or connect(db_path)

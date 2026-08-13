@@ -18,22 +18,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import recall_store  # noqa: E402
+import recall_fmt as F  # noqa: E402
 
 
 def _print_entry(e, verbose=False):
-    mark = "" if e.get("confidence", 1) > 0 else "  [auto-extracted]"
-    sup = ""
-    if e.get("superseded_by"):
-        sup = "  [SUPERSEDED by #%s]" % e["superseded_by"]
-    print("#%s  %s%s%s" % (e["id"], e.get("created_at", "")[:10], mark, sup))
-    print("  Q: %s" % e["question"].replace("\n", " ")[:200])
-    print("  A: %s" % e["answer"].replace("\n", " ")[: (2000 if verbose else 300)])
-    for line in e.get("evidence", [])[: (20 if verbose else 3)]:
-        print("     | %s" % line[:180])
-    if e.get("refs"):
-        print("     refs: %s" % ", ".join(e["refs"][:6]))
-    if verbose and e.get("tags"):
-        print("     tags: %s" % e["tags"])
+    print(F.entry(e, verbose=verbose))
     print()
 
 
@@ -45,12 +34,93 @@ def cmd_search(args):
         min_confidence=(1 if args.explicit_only else 0),
     )
     if not hits:
-        print("no match for %r" % args.query)
-        print("(try fewer or more general words; search is keyword-based)")
+        print(F.c("warn", "no match for %r" % args.query))
+        print(F.c("dim", "multi-word queries need 2 matching terms; try fewer, "
+                         "more distinctive words"))
         return 1
-    print("%d result(s) for %r\n" % (len(hits), args.query))
+    print(F.c("dim", "%d result(s) for %r" % (len(hits), args.query)))
+    print(F.rule())
     for h in hits:
         _print_entry(h, verbose=args.verbose)
+    return 0
+
+
+def cmd_list(args):
+    entries = recall_store.list_entries(
+        limit=args.limit,
+        include_superseded=args.all,
+        explicit_only=args.explicit_only,
+        project=args.project or "",
+        order=("oldest" if args.oldest else "newest"),
+    )
+    if not entries:
+        print(F.c("dim", "store is empty"))
+        return 1
+
+    if args.full:
+        print(F.c("dim", "%d entr%s" % (len(entries), "y" if len(entries) == 1 else "ies")))
+        print(F.rule())
+        for e in entries:
+            _print_entry(e, verbose=True)
+        return 0
+
+    # Compact table: one line each, so a whole store fits on a screen.
+    qw = max(F.width() - 22, 30)
+    print(F.c("dim", "%d entr%s   (a = auto-extracted, s = superseded)"
+                     % (len(entries), "y" if len(entries) == 1 else "ies")))
+    print(F.rule())
+    for e in entries:
+        print(F.table_row(e, qw))
+    print(F.rule())
+    print(F.c("dim", "recall show <id>   for one entry in full"))
+    return 0
+
+
+def cmd_prune(args):
+    """Re-apply the current extraction rules to stored auto-extracted entries.
+
+    The rules improve as noise is found. Without this, entries captured under older, looser
+    rules stay forever - the first backfill kept pip download logs and hardware pricing chat.
+    Only touches confidence=0 rows: anything hand-written is never removed automatically.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import recall_extract as extract
+
+    doomed = [
+        e for e in recall_store.list_entries(include_superseded=True)
+        if not e.get("confidence") and not extract.is_real_question(e["question"])
+    ]
+    if not doomed:
+        print(F.c("dim", "nothing to prune - every auto-extracted entry still passes"))
+        return 0
+
+    print(F.c("dim", "%d auto-extracted entr%s no longer pass the rules:"
+                     % (len(doomed), "y" if len(doomed) == 1 else "ies")))
+    for e in doomed:
+        print("  %s %s" % (F.c("id", "#%s" % e["id"]),
+                           " ".join(e["question"].split())[:66]))
+    if args.dry_run:
+        print(F.c("dim", "\ndry run - nothing deleted. Re-run without --dry-run to remove."))
+        return 0
+
+    conn = recall_store.connect()
+    try:
+        for e in doomed:
+            conn.execute("DELETE FROM entries WHERE id = ? AND confidence = 0", (e["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    print(F.c("dim", "\nremoved %d entr%s" % (len(doomed), "y" if len(doomed) == 1 else "ies")))
+    return 0
+
+
+def cmd_projects(args):
+    rows = recall_store.projects()
+    if not rows:
+        print(F.c("dim", "store is empty"))
+        return 1
+    for name, n in rows:
+        print("%s  %s" % (F.c("id", "%4d" % n), F.c("tag", name)))
     return 0
 
 
@@ -135,6 +205,22 @@ def main():
     a.add_argument("--supersedes", type=int, help="id this entry corrects")
     a.add_argument("--force", action="store_true", help="add even if a duplicate exists")
     a.set_defaults(func=cmd_add)
+
+    ls = sub.add_parser("list", help="browse every entry")
+    ls.add_argument("-n", "--limit", type=int, default=0, help="cap the number shown")
+    ls.add_argument("-f", "--full", action="store_true", help="full entries, not one line each")
+    ls.add_argument("--all", action="store_true", help="include superseded entries")
+    ls.add_argument("--explicit-only", action="store_true", help="skip auto-extracted")
+    ls.add_argument("--project", default="", help="filter to one project label")
+    ls.add_argument("--oldest", action="store_true", help="oldest first")
+    ls.set_defaults(func=cmd_list)
+
+    pn = sub.add_parser("prune", help="drop auto-entries that fail the current rules")
+    pn.add_argument("--dry-run", action="store_true", help="list them without deleting")
+    pn.set_defaults(func=cmd_prune)
+
+    pr = sub.add_parser("projects", help="entry count per project")
+    pr.set_defaults(func=cmd_projects)
 
     sh = sub.add_parser("show", help="print one entry in full")
     sh.add_argument("id", type=int)

@@ -39,6 +39,21 @@ Restart any running CLI afterwards to load the MCP server.
 
 ## Terminal usage
 
+### Browse everything
+
+```bash
+recall list                    # one line per entry, whole store on a screen
+recall list -f                 # full entries with evidence
+recall list --explicit-only    # hand-written only, skip auto-extracted
+recall list --project recall   # one project
+recall projects                # entry counts per project
+recall prune --dry-run         # auto-entries that fail the CURRENT rules
+recall prune                   # remove them (never touches hand-written)
+```
+
+Colour is on for a TTY and off when piped, so `recall list | grep` stays clean.
+`NO_COLOR=1` disables it; `RECALL_COLOR=always` forces it for `| less -R`.
+
 ### Search
 
 ```bash

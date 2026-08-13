@@ -119,13 +119,61 @@ CONTEXTLESS = re.compile(
     re.I,
 )
 
-# A durable question names something: a file, a metric, a subsystem, a number.
+# Pasted terminal output and command lines. These reach the extractor as ordinary user turns -
+# they are typed by a person - but they are not questions and nothing about them is worth
+# retrieving. Found in the first backfill: pip download logs, an acme.sh invocation, hardware
+# price chat. Cheap prefix and substring tests, no cleverness.
+PASTED_OUTPUT = re.compile(
+    r"^(?:sudo\s|apt\s|pip\s|npm\s|git\s|cd\s|ls\s|cat\s|curl\s|ssh\s|chmod\s|"
+    r"Downloading\s|Collecting\s|Requirement already|Installing\s|Successfully\s|"
+    r"\s*[-+]{3}\s|\d+\s+\w+\s+\d+:|Traceback|WARNING:|ERROR:|INFO:)",
+    re.I,
+)
+
+# Long unbroken paths/URLs and download filenames signal a paste rather than a question.
+PASTE_SHAPE = re.compile(r"\S{60,}|\.whl\b|\.tar\.gz\b|https?://\S{40,}")
+
+# A durable question names something: a file, a metric, a subsystem.
+#
+# NOTE: a bare number is deliberately NOT a subject. The first backfill accepted "stuck in 3"
+# and "43 is indeed on a different device" purely because they contained a digit. A number only
+# helps when it sits beside a real noun, which the keyword list below already requires.
 SUBJECT_HINT = re.compile(
     r"[\w/]+\.(?:py|js|sh|rego|ino|json|yml|md)"          # a filename
-    r"|\b\d+"                                              # a figure
     r"|\b(?:cache|caching|pool|score|weight|rule|policy|opa|rego|bundle|gateway|"
-    r"dashboard|endpoint|commit|latency|slow|fast|fail|error|health|probe|"
-    r"trust|authz|auth|sensor|firmware|wifi|device|db|database|query|ci)\b",
+    r"dashboard|endpoint|commit|latency|throughput|benchmark|slow|fast|fail|error|"
+    r"health|probe|trust|authz|auth|sensor|firmware|wifi|device|db|database|query|"
+    r"ci|pipeline|hook|mcp|schema|migration|index|timeout|retry|config|"
+    r"ip|port|socket|cert|certificate|spire|token|jwt|branch|merge)\b",
+    re.I,
+)
+
+# Conversational continuations. These are the real noise, and they are not pastes - they are
+# ordinary sentences that only mean anything inside the thread that produced them:
+# "stuck in 3", "43 is indeed on a different device", "i don't need retry fix".
+#
+# The tell is grammatical: a statement about the current exchange rather than a question about
+# the system. Retrieved six weeks later the reader has no idea what "3" or "43" refers to.
+CONTINUATION = re.compile(
+    r"^(?:"
+    r"i (?:think|feel|guess|don'?t|do not|already|just|also|will|want|need|see|got|"
+    r"increased|decreased|changed|pushed|added|removed|fixed|tried)\b"
+    r"|(?:we|they|he|she|it) (?:said|already|just|also|will|want|need|use|used|have|had)\b"
+    r"|(?:yes|no|ok|okay|sure|right|correct|wrong|true|false)\b[\s,]"
+    r"|stuck\b|working\b|works\b|done\b|failed\b"
+    r"|\d+ is\b"                       # "43 is indeed on a different device"
+    r"|(?:my|our) (?:teammate|colleague|team|friend)\b"
+    r")",
+    re.I,
+)
+
+# Topics that are personal or procurement rather than engineering knowledge about this system.
+# Real questions, correctly answered at the time, but nothing a future session should retrieve:
+# laptop specs, hardware pricing, what to buy.
+OFF_TOPIC = re.compile(
+    r"\b(?:price|pricing|cost|INR|USD|rupees|lakh|crore|budget|buy|purchase|worth it|"
+    r"justifiable|laptop|GPU|RAM|specs?|this PC|hardware recommend|"
+    r"parameter (?:LLM|model)|which (?:LLM|model) should)\b",
     re.I,
 )
 
@@ -142,6 +190,12 @@ def is_real_question(text: str) -> bool:
     if s.lower().strip("?!. ") in FILLER:
         return False
     if CONTEXTLESS.match(s):
+        return False
+    if PASTED_OUTPUT.match(s) or PASTE_SHAPE.search(s):
+        return False
+    if CONTINUATION.match(s):
+        return False
+    if OFF_TOPIC.search(s):
         return False
     # Must name a subject, or it cannot be found again by searching for one.
     return bool(SUBJECT_HINT.search(s))
