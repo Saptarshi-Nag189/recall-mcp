@@ -29,7 +29,7 @@ _TRUECOLOR = os.environ.get("COLORTERM", "") in ("truecolor", "24bit")
 if _TRUECOLOR:
     _C = {
         "id":   _rgb(0x7A, 0xA2, 0xF7),   # blue    - entry ids
-        "date": _rgb(0x56, 0x5F, 0x89),   # comment - timestamps
+        "date": _rgb(0x7F, 0x87, 0xA8),   # lifted comment - legible but subordinate
         "q":    _rgb(0xC0, 0xCA, 0xF5) + "\033[1m",   # fg bold - the question
         "a":    _rgb(0xA9, 0xB1, 0xD6),   # fg dim  - the answer
         "ev":   _rgb(0x9E, 0xCE, 0x6A),   # green   - measurements
@@ -37,17 +37,17 @@ if _TRUECOLOR:
         "tag":  _rgb(0xBB, 0x9A, 0xF7),   # purple  - tags and projects
         "warn": _rgb(0xFF, 0x9E, 0x64),   # orange  - superseded
         "hit":  _rgb(0x7D, 0xCF, 0xFF),   # cyan    - matched terms
-        "dim":  _rgb(0x54, 0x5C, 0x7E),   # dark3
+        "dim":  _rgb(0x82, 0x8B, 0xB0),   # lifted dark3 - readable on a busy background
         "rule": _rgb(0x3B, 0x42, 0x61),   # bg_highlight - separators
         "off":  "\033[0m",
     }
 else:
     _C = {
-        "id": "\033[38;5;111m", "date": "\033[38;5;60m",
+        "id": "\033[38;5;111m", "date": "\033[38;5;103m",
         "q": "\033[38;5;189m\033[1m", "a": "\033[38;5;146m",
         "ev": "\033[38;5;149m", "ref": "\033[38;5;179m",
         "tag": "\033[38;5;141m", "warn": "\033[38;5;215m",
-        "hit": "\033[38;5;117m", "dim": "\033[38;5;60m",
+        "hit": "\033[38;5;117m", "dim": "\033[38;5;103m",
         "rule": "\033[38;5;237m", "off": "\033[0m",
     }
 
@@ -145,20 +145,23 @@ def entry(e: dict, verbose: bool = False, show_answer: bool = True) -> str:
 def table_row(e: dict, qw: int) -> str:
     """One compact line for `recall list`.
 
-    Hand-written entries are shown in full foreground; auto-extracted ones are dimmed, so the
-    curated material stands out at a glance without needing a legend.
+    Status is conveyed by HUE, matching each row's marker, so every row stays fully legible.
     """
     q = " ".join(e["question"].split())
     if len(q) > qw:
         q = q[: qw - 1] + "…"
 
+    # Colour carries the status, brightness does not. Dimming auto-extracted rows made them
+    # genuinely hard to read against a busy terminal background, and an entry being
+    # auto-captured is a reason to label it, not to hide it. Text now takes the same hue as its
+    # marker: green for curated, cyan for auto, orange for superseded - all fully legible.
     explicit = bool(e.get("confidence", 1))
     if e.get("superseded_by"):
-        marker, qtext = c("warn", "⊘"), c("dim", q)
+        marker, qtext = c("warn", "⊘"), c("warn", q)
     elif explicit:
         marker, qtext = c("ev", "●"), c("q", q)
     else:
-        marker, qtext = c("dim", "○"), c("dim", q)
+        marker, qtext = c("hit", "○"), c("hit", q)
 
     return "%s %s %s %s" % (
         c("id", "%4s" % ("#%s" % e["id"])),
