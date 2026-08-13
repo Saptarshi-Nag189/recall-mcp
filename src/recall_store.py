@@ -233,12 +233,18 @@ def search(
         scored = []
         for r in rows:
             d = _row_to_dict(r)
-            blob = " ".join([
-                d.get("question", ""), d.get("answer", ""),
-                " ".join(d.get("evidence", [])), d.get("tags", "") or "",
+            q_blob = (d.get("question", "") + " " + (d.get("tags", "") or "")).lower()
+            body_blob = " ".join([
+                d.get("answer", ""), " ".join(d.get("evidence", [])),
             ]).lower()
-            hits = sum(1 for t in terms if t in blob)
+            hits = sum(1 for t in terms if t in q_blob or t in body_blob)
+            # A term matching in the QUESTION means the entry is about that topic; a term
+            # matching only in the body may be an incidental mention. Without this, an entry
+            # explaining search behaviour outranked the actual caching measurement for the
+            # query "caching gain", purely because it quoted that phrase as an example.
+            q_hits = sum(1 for t in terms if t in q_blob)
             d["_hits"] = hits
+            d["_qhits"] = q_hits
             scored.append(d)
 
         if len(terms) > 1:
@@ -248,9 +254,11 @@ def search(
             # purely on the word "Search", which reads as an answer and is not one. An empty
             # result is honest and cheap to act on.
             scored = multi
-        scored.sort(key=lambda d: (-d["_hits"], d.get("score", 0)))
+        # Rank: most terms matched, then most matched in the question, then bm25.
+        scored.sort(key=lambda d: (-d["_hits"], -d["_qhits"], d.get("score", 0)))
         for d in scored:
             d.pop("_hits", None)
+            d.pop("_qhits", None)
         return scored[:limit]
     finally:
         if own:

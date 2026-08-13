@@ -66,7 +66,7 @@ def cmd_list(args):
 
     # Compact table: one line each, so a whole store fits on a screen.
     qw = max(F.width() - 22, 30)
-    print(F.c("dim", "%d entr%s   (a = auto-extracted, s = superseded)"
+    print(F.c("dim", "%d entr%s   (● curated   ○ auto-extracted   ⊘ superseded)"
                      % (len(entries), "y" if len(entries) == 1 else "ies")))
     print(F.rule())
     for e in entries:
@@ -127,10 +127,10 @@ def cmd_projects(args):
 def cmd_add(args):
     dup = recall_store.find_duplicate(args.question)
     if dup and not args.force:
-        print("A similar entry already exists:\n")
+        print(F.c("warn", "a similar entry already exists:") + "\n")
         _print_entry(dup)
-        print("Use --force to add anyway, or:")
-        print("  recall supersede %s --by <new-id>   # after adding the correction" % dup["id"])
+        print(F.c("dim", "--force to add anyway, or after adding the correction:"))
+        print(F.c("dim", "  recall supersede %s --by <new-id>" % dup["id"]))
         return 2
     new_id = recall_store.add(
         question=args.question,
@@ -143,7 +143,7 @@ def cmd_add(args):
         source="explicit",
         confidence=1,
     )
-    print("stored as #%d" % new_id)
+    print("stored as " + F.c("id", "#%d" % new_id))
     if args.supersedes:
         recall_store.supersede(args.supersedes, new_id)
         print("marked #%s as superseded by #%d" % (args.supersedes, new_id))
@@ -153,7 +153,7 @@ def cmd_add(args):
 def cmd_show(args):
     e = recall_store.get(args.id)
     if not e:
-        print("no entry #%s" % args.id)
+        print(F.c("warn", "no entry #%s" % args.id))
         return 1
     _print_entry(e, verbose=True)
     return 0
@@ -167,17 +167,18 @@ def cmd_supersede(args):
         print("no entry #%s" % args.by)
         return 1
     recall_store.supersede(args.old, args.by)
-    print("#%s is now superseded by #%s" % (args.old, args.by))
+    print(F.c("warn", "#%s" % args.old) + " superseded by " + F.c("id", "#%s" % args.by))
     return 0
 
 
 def cmd_stats(args):
     s = recall_store.stats()
-    print("recall store: %s" % recall_store.DB_PATH)
-    print("  total      : %s" % s["total"])
-    print("  explicit   : %s" % s["explicit"])
-    print("  extracted  : %s" % s["extracted"])
-    print("  superseded : %s" % s["superseded"])
+    print(F.c("dim", recall_store.DB_PATH))
+    print(F.rule())
+    print("  %s  %s" % (F.c("id", "%4d" % s["total"]), "entries"))
+    print("  %s  %s" % (F.c("ev", "%4d" % s["explicit"]), F.c("q", "curated")))
+    print("  %s  %s" % (F.c("dim", "%4d" % s["extracted"]), F.c("dim", "auto-extracted")))
+    print("  %s  %s" % (F.c("warn", "%4d" % s["superseded"]), F.c("warn", "superseded")))
     return 0
 
 
