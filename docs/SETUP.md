@@ -40,6 +40,38 @@ args = ["/home/sapta/.shared_memory/recall_mcp.py"]
 
 Restart the CLI afterwards.
 
+## Antigravity (agy) — two files, both required
+
+Verified working 2026-08-13: asked an unprompted question whose answer existed only in the
+store, and agy called `recall_search` on its own.
+
+**1. Server definition** — `~/.gemini/config/mcp_config.json`. The agy binary names this path
+itself ("Global Configuration: `~/.gemini/config/mcp_config.json`"):
+
+```json
+{ "mcpServers": {
+    "recall": { "command": "python3",
+                "args": ["/home/sapta/.shared_memory/recall_mcp.py"] } } }
+```
+
+**2. Tool permissions** — `~/.gemini/antigravity-cli/settings.json`. Without these agy prompts
+for approval on every call:
+
+```json
+{ "permissions": { "allow": [
+    "mcp(recall/recall_search)", "mcp(recall/recall_add)",
+    "mcp(recall/recall_get)",    "mcp(recall/recall_supersede)"
+] } }
+```
+
+That file has no `mcpServers` block and never defines servers - permissions only.
+
+**Do not use `~/.gemini/settings.json`.** That is the deprecated Gemini CLI's config; agy does
+not read it. Registering there does nothing.
+
+Confirmation after restart: a `recall/` directory appears under
+`~/.gemini/antigravity-cli/mcp/`, where agy caches each discovered server's tool schemas.
+
 ## Auto-capture hook (Claude Code)
 
 Extraction runs from the `Stop` hook, after the session ends, outside the model — no tokens.
