@@ -14,11 +14,53 @@ prompt.
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import recall_store  # noqa: E402
 
 PROTOCOL_VERSION = "2024-11-05"
+
+# ── write authorisation ──────────────────────────────────────────────────────
+#
+# Every CLI on this machine runs as the same OS user, so file permissions cannot tell one
+# client from another - anything one can write, all can. The gate is therefore a shared secret
+# carried in the MCP server's own env block: only the client whose config sets RECALL_WRITE_KEY
+# launches this process with write access. Codex and agy read and search freely; they cannot
+# add, correct or delete.
+#
+# This is a guard rail, not a security boundary. Anyone who can read ~/.claude.json can read the
+# key, and the store is a plain file underneath. It stops an agent from casually rewriting
+# curated knowledge; it does not stop a determined one. Making that explicit matters more than
+# implying a protection that is not there.
+#
+# The audit log is the half that always works: every write attempt, allowed or refused, is
+# recorded with the client that made it, so an unexpected change is visible after the fact.
+_EXPECTED_KEY = os.environ.get("RECALL_WRITE_KEY", "")
+_CLIENT = os.environ.get("RECALL_CLIENT", "unknown")
+AUDIT_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recall_audit.log")
+
+WRITE_TOOLS = {"recall_add", "recall_supersede"}
+
+
+def _writes_allowed() -> bool:
+    """True when this process was launched by a client holding the write key."""
+    return bool(_EXPECTED_KEY)
+
+
+def _audit(action: str, detail: str, allowed: bool) -> None:
+    """Append one line per write attempt. Never raises - logging must not break a call."""
+    try:
+        with open(AUDIT_LOG, "a") as fh:
+            fh.write("%s\t%s\t%s\t%s\t%s\n" % (
+                time.strftime("%Y-%m-%dT%H:%M:%S"),
+                _CLIENT,
+                "ALLOW" if allowed else "REFUSE",
+                action,
+                detail.replace("\t", " ").replace("\n", " ")[:200],
+            ))
+    except Exception:  # noqa: BLE001
+        pass
 
 TOOLS = [
     {
@@ -133,10 +175,22 @@ def handle(method, params, req_id):
             "serverInfo": {"name": "recall", "version": "1.0.0"},
         }
     if method == "tools/list":
-        return {"tools": TOOLS}
+        # A read-only client is not shown the write tools at all. Advertising a tool that always
+        # refuses invites an agent to keep retrying it and to report a failure it cannot fix.
+        if _writes_allowed():
+            return {"tools": TOOLS}
+        return {"tools": [t for t in TOOLS if t["name"] not in WRITE_TOOLS]}
     if method == "tools/call":
         name = params.get("name")
         args = params.get("arguments") or {}
+
+        if name in WRITE_TOOLS and not _writes_allowed():
+            _audit(name, str(args.get("question", ""))[:120], allowed=False)
+            return {"content": [{"type": "text", "text":
+                    "This client has read-only access to the recall store. Search and read are "
+                    "available; adding or correcting entries is not. Ask the user to record it, "
+                    "or use the CLI: recall add -q '...' -a '...'"}],
+                    "isError": True}
         try:
             if name == "recall_search":
                 hits = recall_store.search(
@@ -159,6 +213,7 @@ def handle(method, params, req_id):
                 )
                 if args.get("supersedes"):
                     recall_store.supersede(int(args["supersedes"]), new_id)
+                _audit("recall_add", args.get("question", "")[:120], allowed=True)
                 text = "Stored as #%d." % new_id
                 if dup and not args.get("supersedes"):
                     text += (
@@ -169,6 +224,8 @@ def handle(method, params, req_id):
                 e = recall_store.get(int(args.get("id", 0)))
                 text = _fmt([e] if e else [])
             elif name == "recall_supersede":
+                _audit("recall_supersede",
+                       "#%s -> #%s" % (args.get("old_id"), args.get("new_id")), allowed=True)
                 ok = recall_store.supersede(int(args["old_id"]), int(args["new_id"]))
                 text = "Marked." if ok else "No such entry."
             else:
