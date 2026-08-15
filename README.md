@@ -54,75 +54,83 @@ edit is backed up first, and re-running is safe — **the store is never overwri
 Runtime lives in `%USERPROFILE%\.shared_memory\`, with the store at `%USERPROFILE%\.shared_memory\recall.db`.
 CLI entry point is `%USERPROFILE%\.local\bin\recall.ps1`.
 
-## Kilo Integration
+## Agent Integration
 
-Kilo (nemotron 3 ultra high) can now participate in the same shared memory pool used by
-Claude Code, Codex, and Gemini. The integration adds a `ModelSession` entity type that
-captures session context at start/end so handoffs between sessions are preserved.
+Any agent (Claude Code, Codex, AGY, Kilo, etc.) can participate in the same shared memory pool.
+The integration adds an `AgentSession` entity type that captures session context at start/end
+so handoffs between sessions are preserved.
 
 ### Wrapper function (bash)
 
 Add to `~/.bashrc`:
 
 ```bash
-kilo() {
-  export KILO_SESSION_ID="kilo-$(date +%s)"
-  export KILO_TOPICS="${1:-general}"
-  export KILO_HANDOFF_FROM="${2:-}"
-  export KILO_MODEL_ID="${KILO_MODEL_ID:-nemotron-3-ultra-550b-a55b:free}"
-  export KILO_PROVIDER="${KILO_PROVIDER:-openrouter}"
-  export KILO_WORKING_TREE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  export KILO_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
+agent() {
+  export AGENT_SESSION_ID="agent-$(date +%s)"
+  export AGENT_TOPICS="${1:-general}"
+  export AGENT_HANDOFF_FROM="${2:-}"
+  export AGENT_MODEL_ID="${AGENT_MODEL_ID:-unknown}"
+  export AGENT_MODEL_LABEL="${AGENT_MODEL_LABEL:-unknown}"
+  export AGENT_PROVIDER="${AGENT_PROVIDER:-unknown}"
+  export AGENT_WORKING_TREE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  export AGENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
+  export AGENT_MODEL_INFO="${AGENT_MODEL_INFO:-$USER agent}"
   
-  ~/.shared_memory/kilo_session_start.sh
-  command kilo "$@"
+  ~/.shared_memory/agent-integration/agent_session_start.sh
+  command "$@"  # Run the actual agent command
   local exit_code=$?
-  ~/.shared_memory/kilo_session_end.sh
+  ~/.shared_memory/agent-integration/agent_session_end.sh
   return $exit_code
 }
 ```
+
+Usage: `agent kilo` or `agent claude` etc.
 
 ### Wrapper function (PowerShell)
 
 Add to `$PROFILE`:
 
 ```powershell
-function kilo {
+function agent {
   param([string[]]$Args)
   
-  $env:KILO_SESSION_ID = "kilo-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-  $env:KILO_TOPICS = if ($Args) { $Args -join ',' } else { 'general' }
-  $env:KILO_HANDOFF_FROM = ''
-  $env:KILO_MODEL_ID = $env:KILO_MODEL_ID ?? 'nemotron-3-ultra-550b-a55b:free'
-  $env:KILO_PROVIDER = $env:KILO_PROVIDER ?? 'openrouter'
-  $env:KILO_WORKING_TREE = (git rev-parse --show-toplevel 2>$null) ?? (Get-Location).Path
-  $env:KILO_BRANCH = (git rev-parse --abbrev-ref HEAD 2>$null) ?? 'detached'
+  $env:AGENT_SESSION_ID = "agent-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+  $env:AGENT_TOPICS = if ($Args) { $Args -join ',' } else { 'general' }
+  $env:AGENT_HANDOFF_FROM = ''
+  $env:AGENT_MODEL_ID = $env:AGENT_MODEL_ID ?? 'unknown'
+  $env:AGENT_MODEL_LABEL = $env:AGENT_MODEL_LABEL ?? 'unknown'
+  $env:AGENT_PROVIDER = $env:AGENT_PROVIDER ?? 'unknown'
+  $env:AGENT_WORKING_TREE = (git rev-parse --show-toplevel 2>$null) ?? (Get-Location).Path
+  $env:AGENT_BRANCH = (git rev-parse --abbrev-ref HEAD 2>$null) ?? 'detached'
+  $env:AGENT_MODEL_INFO = $env:AGENT_MODEL_INFO ?? "$env:USERNAME agent"
   
-  & "$env:USERPROFILE\.shared_memory\kilo_session_start.ps1"
-  & kilo @Args
+  & "$env:USERPROFILE\.shared_memory\agent-integration\agent_session_start.ps1"
+  & $Args[0] @Args[1..$Args.Length]
   $exitCode = $LASTEXITCODE
-  & "$env:USERPROFILE\.shared_memory\kilo_session_end.ps1"
+  & "$env:USERPROFILE\.shared_memory\agent-integration\agent_session_end.ps1"
   exit $exitCode
 }
 ```
 
-### ModelSession entity
+Usage: `agent kilo` or `agent claude` etc.
 
-The `ModelSession` entity type stores:
+### AgentSession entity
+
+The `AgentSession` entity type stores:
 - `session_id` — unique session identifier
 - `topics` — comma-separated topics covered
 - `handoff_from` — context for the next session
-- `model_id` / `provider` — which model ran
+- `model_id` / `provider` / `model_label` — which model ran
 - `working_tree` / `branch` — git context
 - `started_at` / `ended_at` / `cwd` — timing and location
 
-On session start, `kilo_session_start.ps1` loads `global.json` and `project.json` from the shared
-memory directory and prints a formatted header. On session end, `kilo_session_end.ps1` builds the
-`ModelSession` entity and writes it via the MCP server's `recall_add` tool, then checks whether
+On session start, `agent_session_start.ps1` loads `global.json` and `project.json` from the shared
+memory directory and prints a formatted header. On session end, `agent_session_end.ps1` builds the
+`AgentSession` entity and writes it via the MCP server's `recall_add` tool, then checks whether
 the project or global bank was updated this session.
 
-The `kilo/` directory contains the PowerShell start/end scripts; the bash equivalents live in
-`~/.shared_memory/` after install.
+The `agent-integration/` directory contains the PowerShell start/end scripts; the bash equivalents
+live in `~/.shared_memory/agent-integration/` after install.
 
 ## Cross-Platform Notes
 
@@ -131,7 +139,7 @@ The `kilo/` directory contains the PowerShell start/end scripts; the bash equiva
   They do not share data automatically.
 - **Each machine gets its own `recall.db`**. Syncing across machines is a separate decision
   (see "Known limits" — single machine).
-- **`kilo_memory_helper.py` works identically on all platforms** — it uses the same SQLite
+- **`agent_memory_helper.py` works identically on all platforms** — it uses the same SQLite
   schema and MCP protocol regardless of OS.
 - **`recall_mcp.py` MCP server works identically** — stdio transport, same JSON-RPC methods.
   The Python path differs (`python3` vs `python`) but the wrapper scripts handle this.
@@ -308,9 +316,13 @@ antigravity"` immediately let irrelevant entries back in. The suite pins both en
 | `src/recall_fmt.py` | output formatting |
 | `install.sh` | copy, link, register, verify (Linux/macOS) |
 | `install.ps1` | copy, link, register, verify (Windows) |
-| `kilo/kilo_session_start.ps1` | Kilo session start — loads memory banks |
-| `kilo/kilo_session_end.ps1` | Kilo session end — writes ModelSession entity |
+| `agent-integration/agent_session_start.sh` | Agent session start (Linux/macOS) — loads memory banks |
+| `agent-integration/agent_session_end.sh` | Agent session end (Linux/macOS) — writes AgentSession entity |
+| `agent-integration/agent_session_start.ps1` | Agent session start (Windows) — loads memory banks |
+| `agent-integration/agent_session_end.ps1` | Agent session end (Windows) — writes AgentSession entity |
+| `agent-integration/agent_memory_helper.py` | Python helper — write any entity type from any platform |
 | `docs/SETUP.md` | manual setup and the auto-capture hook |
+| `docs/CROSS_PLATFORM.md` | platform-specific notes |
 
 Runtime lives in `~/.shared_memory/` (Linux/macOS) or `%USERPROFILE%\.shared_memory\` (Windows),
 with the store at `recall.db`.
