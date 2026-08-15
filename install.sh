@@ -25,12 +25,18 @@ echo
 
 # ── 1. files ─────────────────────────────────────────────────────────────────
 mkdir -p "$HOME_DIR" "$BIN_DIR"
-for f in recall_store.py recall_mcp.py recall_extract.py recall; do
+for f in recall_store.py recall_mcp.py recall_extract.py recall_fmt.py recall_main.py recall; do
     cp "${SRC}/${f}" "${HOME_DIR}/${f}"
 done
+# Copy kilo/ directory recursively (session scripts & helper)
+if [[ -d "${SRC}/../kilo" ]]; then
+    cp -r "${SRC}/../kilo" "${HOME_DIR}/"
+    chmod +x "${HOME_DIR}/kilo/"*.sh 2>/dev/null || true
+    say "installed kilo/ directory"
+fi
 chmod +x "${HOME_DIR}/recall" "${HOME_DIR}/recall_mcp.py"
 ln -sf "${HOME_DIR}/recall" "${BIN_DIR}/recall"
-say "installed 4 files, linked ${BIN_DIR}/recall"
+say "installed 6 files, linked ${BIN_DIR}/recall"
 
 # The store itself is never touched by an install: re-running must not lose entries.
 if [[ -f "${HOME_DIR}/recall.db" ]]; then

@@ -1,0 +1,5 @@
+# Shared memory project bank - append JSONL entities here
+# Valid entityType values:
+#   CrossRepoFact, CoreComponent, SessionSummary, ModelSession,
+#   DesignDecision, Trap, SecurityFlaw, RepoFact, ProjectState, SystemConfig
+# Each line: {"type":"entity","name":"...","entityType":"...","observations":["...", "..."]}

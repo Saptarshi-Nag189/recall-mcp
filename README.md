@@ -37,6 +37,105 @@ first, and re-running is safe — **the store is never overwritten**.
 
 Restart any running CLI afterwards to load the MCP server.
 
+## Install (Windows)
+
+```powershell
+cd recall-mcp
+.\install.ps1
+# may need: powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Copies files to `%USERPROFILE%\.shared_memory`, links `recall.ps1` into `%USERPROFILE%\.local\bin`,
+and registers the MCP server with Claude Code, Codex and Gemini if they are installed. Every config
+edit is backed up first, and re-running is safe — **the store is never overwritten**.
+
+**Restart PowerShell after install** to pick up the new `recall` command from `PATH`.
+
+Runtime lives in `%USERPROFILE%\.shared_memory\`, with the store at `%USERPROFILE%\.shared_memory\recall.db`.
+CLI entry point is `%USERPROFILE%\.local\bin\recall.ps1`.
+
+## Kilo Integration
+
+Kilo (nemotron 3 ultra high) can now participate in the same shared memory pool used by
+Claude Code, Codex, and Gemini. The integration adds a `ModelSession` entity type that
+captures session context at start/end so handoffs between sessions are preserved.
+
+### Wrapper function (bash)
+
+Add to `~/.bashrc`:
+
+```bash
+kilo() {
+  export KILO_SESSION_ID="kilo-$(date +%s)"
+  export KILO_TOPICS="${1:-general}"
+  export KILO_HANDOFF_FROM="${2:-}"
+  export KILO_MODEL_ID="${KILO_MODEL_ID:-nemotron-3-ultra-550b-a55b:free}"
+  export KILO_PROVIDER="${KILO_PROVIDER:-openrouter}"
+  export KILO_WORKING_TREE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  export KILO_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
+  
+  ~/.shared_memory/kilo_session_start.sh
+  command kilo "$@"
+  local exit_code=$?
+  ~/.shared_memory/kilo_session_end.sh
+  return $exit_code
+}
+```
+
+### Wrapper function (PowerShell)
+
+Add to `$PROFILE`:
+
+```powershell
+function kilo {
+  param([string[]]$Args)
+  
+  $env:KILO_SESSION_ID = "kilo-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+  $env:KILO_TOPICS = if ($Args) { $Args -join ',' } else { 'general' }
+  $env:KILO_HANDOFF_FROM = ''
+  $env:KILO_MODEL_ID = $env:KILO_MODEL_ID ?? 'nemotron-3-ultra-550b-a55b:free'
+  $env:KILO_PROVIDER = $env:KILO_PROVIDER ?? 'openrouter'
+  $env:KILO_WORKING_TREE = (git rev-parse --show-toplevel 2>$null) ?? (Get-Location).Path
+  $env:KILO_BRANCH = (git rev-parse --abbrev-ref HEAD 2>$null) ?? 'detached'
+  
+  & "$env:USERPROFILE\.shared_memory\kilo_session_start.ps1"
+  & kilo @Args
+  $exitCode = $LASTEXITCODE
+  & "$env:USERPROFILE\.shared_memory\kilo_session_end.ps1"
+  exit $exitCode
+}
+```
+
+### ModelSession entity
+
+The `ModelSession` entity type stores:
+- `session_id` — unique session identifier
+- `topics` — comma-separated topics covered
+- `handoff_from` — context for the next session
+- `model_id` / `provider` — which model ran
+- `working_tree` / `branch` — git context
+- `started_at` / `ended_at` / `cwd` — timing and location
+
+On session start, `kilo_session_start.ps1` loads `global.json` and `project.json` from the shared
+memory directory and prints a formatted header. On session end, `kilo_session_end.ps1` builds the
+`ModelSession` entity and writes it via the MCP server's `recall_add` tool, then checks whether
+the project or global bank was updated this session.
+
+The `kilo/` directory contains the PowerShell start/end scripts; the bash equivalents live in
+`~/.shared_memory/` after install.
+
+## Cross-Platform Notes
+
+- **WSL2 vs native Windows**: separate installs, separate DBs. A WSL2 Ubuntu install puts its
+  store at `~/.shared_memory/recall.db`; native Windows puts it at `%USERPROFILE%\.shared_memory\recall.db`.
+  They do not share data automatically.
+- **Each machine gets its own `recall.db`**. Syncing across machines is a separate decision
+  (see "Known limits" — single machine).
+- **`kilo_memory_helper.py` works identically on all platforms** — it uses the same SQLite
+  schema and MCP protocol regardless of OS.
+- **`recall_mcp.py` MCP server works identically** — stdio transport, same JSON-RPC methods.
+  The Python path differs (`python3` vs `python`) but the wrapper scripts handle this.
+
 ## Terminal usage
 
 ### Browse everything
@@ -201,10 +300,17 @@ antigravity"` immediately let irrelevant entries back in. The suite pins both en
 | Path | Role |
 |---|---|
 | `src/recall_store.py` | the one implementation — CLI, MCP and extractor all call it |
-| `src/recall` | CLI |
+| `src/recall` | CLI (Linux/macOS) |
+| `src/recall.ps1` | CLI wrapper (Windows PowerShell) |
 | `src/recall_mcp.py` | MCP server (stdio) |
 | `src/recall_extract.py` | deterministic transcript extractor |
-| `install.sh` | copy, link, register, verify |
+| `src/recall_main.py` | main entry point |
+| `src/recall_fmt.py` | output formatting |
+| `install.sh` | copy, link, register, verify (Linux/macOS) |
+| `install.ps1` | copy, link, register, verify (Windows) |
+| `kilo/kilo_session_start.ps1` | Kilo session start — loads memory banks |
+| `kilo/kilo_session_end.ps1` | Kilo session end — writes ModelSession entity |
 | `docs/SETUP.md` | manual setup and the auto-capture hook |
 
-Runtime lives in `~/.shared_memory/`, with the store at `~/.shared_memory/recall.db`.
+Runtime lives in `~/.shared_memory/` (Linux/macOS) or `%USERPROFILE%\.shared_memory\` (Windows),
+with the store at `recall.db`.
