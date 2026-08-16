@@ -40,15 +40,15 @@ foreach ($f in $files) {
 }
 Say "installed $($files.Count) files to $homeDir"
 
-# Copy kilo/ directory if it exists
-$kiloSrc = Join-Path (Split-Path -Parent $srcDir) "kilo"
-$kiloDst = Join-Path $homeDir "kilo"
-if (Test-Path $kiloSrc) {
-    if (Test-Path $kiloDst) {
-        Remove-Item -Recurse -Force $kiloDst
+# Copy agent-integration/ directory if it exists
+$agentSrc = Join-Path (Split-Path -Parent $srcDir) "agent-integration"
+$agentDst = Join-Path $homeDir "agent-integration"
+if (Test-Path $agentSrc) {
+    if (Test-Path $agentDst) {
+        Remove-Item -Recurse -Force $agentDst
     }
-    Copy-Item $kiloSrc $kiloDst -Recurse
-    Say "copied kilo/ directory"
+    Copy-Item $agentSrc $agentDst -Recurse
+    Say "copied agent-integration/ directory"
 }
 
 # The store itself is never touched by an install: re-running must not lose entries.

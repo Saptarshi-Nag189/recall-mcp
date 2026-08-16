@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# kilo_session_start.sh
-# Called at Kilo session start. Loads shared memory banks and prints context.
+# agent_session_start.sh
+# Called at agent session start. Loads shared memory banks and prints context.
 
 CWD="${PWD}"
 HOME_DIR="$HOME"
@@ -19,10 +19,11 @@ fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║          KILO SHARED MEMORY CONTEXT LOADED           ║"
+echo "║          AGENT SHARED MEMORY CONTEXT LOADED          ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo "CWD: $CWD"
-echo "Model: nemotron-3-ultra-550b-a55b:free (nemotron 3 ultra high)"
+MODEL_INFO="${AGENT_MODEL_INFO:-$(whoami) agent}"
+echo "Model: $MODEL_INFO"
 echo ""
 
 for bank in "${RELEVANT[@]}"; do
@@ -54,5 +55,5 @@ MCPEOF
     echo ""
 done
 
-echo "══════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════"
 echo ""

@@ -1,4 +1,4 @@
-# Cross-Platform Notes for Recall + Kilo
+# Cross-Platform Notes for Recall + Agent Integration
 
 ## Windows
 
@@ -20,13 +20,12 @@
 - `~/.local/bin` must be in PATH (usually default)
 - **Auto-capture hook** works for Claude Code
 
-## Kilo Integration (all platforms)
+## Agent Integration (all platforms)
 
-- `kilo_memory_helper.py` is pure Python — works everywhere
+- `agent_memory_helper.py` is pure Python — works everywhere
 - Wrapper function in shell config (`~/.bashrc` / `$PROFILE`)
-- `kilo_session_start.ps1` reads JSONL directly (fast)
-- `kilo_session_end.ps1` uses MCP subprocess for writes
-- `kilo -c` does **NOT** run wrapper; use `kilo` or `kilo run`
+- `agent_session_start.ps1` reads JSONL directly (fast)
+- `agent_session_end.ps1` uses MCP subprocess for writes
 
 ## File Paths
 

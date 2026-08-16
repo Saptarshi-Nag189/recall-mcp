@@ -1,6 +1,6 @@
 <# 
 .SYNOPSIS
-    Kilo session start script - loads shared memory from JSONL files
+    Agent session start script - loads shared memory from JSONL files
 .DESCRIPTION
     Reads global.json and project.json from $env:USERPROFILE\.shared_memory\,
     parses JSONL entities, and prints formatted session header.
@@ -10,10 +10,10 @@ param(
     [string]$MemoryDir = "$env:USERPROFILE\.shared_memory"
 )
 
-$ModelInfo = "nemotron-3-ultra-550b-a55b:free (nemotron 3 ultra high)"
+$ModelInfo = $env:AGENT_MODEL_INFO ?? "$env:USERNAME agent"
 $Cwd = Get-Location
 
-Write-Host "`n=== Kilo Session Start ===" -ForegroundColor Cyan
+Write-Host "`n=== Agent Session Start ===" -ForegroundColor Cyan
 Write-Host "CWD: $Cwd" -ForegroundColor Gray
 Write-Host "Model: $ModelInfo" -ForegroundColor Gray
 Write-Host "Memory Dir: $MemoryDir" -ForegroundColor Gray

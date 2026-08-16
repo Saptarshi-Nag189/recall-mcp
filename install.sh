@@ -28,11 +28,11 @@ mkdir -p "$HOME_DIR" "$BIN_DIR"
 for f in recall_store.py recall_mcp.py recall_extract.py recall_fmt.py recall_main.py recall; do
     cp "${SRC}/${f}" "${HOME_DIR}/${f}"
 done
-# Copy kilo/ directory recursively (session scripts & helper)
-if [[ -d "${SRC}/../kilo" ]]; then
-    cp -r "${SRC}/../kilo" "${HOME_DIR}/"
-    chmod +x "${HOME_DIR}/kilo/"*.sh 2>/dev/null || true
-    say "installed kilo/ directory"
+# Copy agent-integration/ directory recursively (session scripts & helper)
+if [[ -d "${SRC}/../agent-integration" ]]; then
+    cp -r "${SRC}/../agent-integration" "${HOME_DIR}/"
+    chmod +x "${HOME_DIR}/agent-integration/"*.sh 2>/dev/null || true
+    say "installed agent-integration/ directory"
 fi
 chmod +x "${HOME_DIR}/recall" "${HOME_DIR}/recall_mcp.py"
 ln -sf "${HOME_DIR}/recall" "${BIN_DIR}/recall"

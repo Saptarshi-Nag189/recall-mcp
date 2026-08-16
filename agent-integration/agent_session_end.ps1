@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Kilo session end script - writes ModelSession entity via MCP JSON-RPC
+    Agent session end script - writes AgentSession entity via MCP JSON-RPC
 .DESCRIPTION
-    Reads environment variables, prompts for missing ones, builds ModelSession entity,
+    Reads environment variables, prompts for missing ones, builds AgentSession entity,
     writes via recall_mcp.py MCP server using recall_add tool, checks for bank writes.
 #>
 
@@ -12,32 +12,32 @@ param(
 )
 
 # Read environment variables
-$sessionId = $env:KILO_SESSION_ID
-$topics = $env:KILO_TOPICS
-$handoffFrom = $env:KILO_HANDOFF_FROM
-$modelId = $env:KILO_MODEL_ID
-$provider = $env:KILO_PROVIDER
-$workingTree = $env:KILO_WORKING_TREE
-$branch = $env:KILO_BRANCH
+$sessionId = $env:AGENT_SESSION_ID
+$topics = $env:AGENT_TOPICS
+$handoffFrom = $env:AGENT_HANDOFF_FROM
+$modelId = $env:AGENT_MODEL_ID
+$provider = $env:AGENT_PROVIDER
+$workingTree = $env:AGENT_WORKING_TREE
+$branch = $env:AGENT_BRANCH
 
 # Prompt for missing required variables
 if (-not $topics) {
-    $topics = Read-Host "Enter KILO_TOPICS (comma-separated topics covered this session)"
+    $topics = Read-Host "Enter AGENT_TOPICS (comma-separated topics covered this session)"
 }
 if (-not $handoffFrom) {
-    $handoffFrom = Read-Host "Enter KILO_HANDOFF_FROM (context for next session)"
+    $handoffFrom = Read-Host "Enter AGENT_HANDOFF_FROM (context for next session)"
 }
 
 # Validate required vars
 if (-not $sessionId) {
-    Write-Error "KILO_SESSION_ID not set"
+    Write-Error "AGENT_SESSION_ID not set"
     exit 1
 }
 
-# Build ModelSession entity
+# Build AgentSession entity
 $timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ss"
 $entity = @{
-    type = "ModelSession"
+    type = "AgentSession"
     name = "session-$sessionId"
     session_id = $sessionId
     topics = $topics -split ',' | ForEach-Object { $_.Trim() }
@@ -51,12 +51,13 @@ $entity = @{
     cwd = (Get-Location).Path
 } | ConvertTo-Json -Depth 5 -Compress
 
-Write-Host "Built ModelSession entity" -ForegroundColor Cyan
+Write-Host "Built AgentSession entity" -ForegroundColor Cyan
 
 # Spawn recall_mcp.py subprocess and send JSON-RPC
-$python = "python3"
+$python = "python"
 if (-not (Get-Command $python -ErrorAction SilentlyContinue)) {
-    $python = "python"
+    Write-Error "python not found on PATH"
+    exit 1
 }
 
 # JSON-RPC requests
@@ -68,7 +69,7 @@ $initializeReq = @{
         protocolVersion = "2024-11-05"
         capabilities = @{}
         clientInfo = @{
-            name = "kilo-session-end"
+            name = "agent-session-end"
             version = "1.0.0"
         }
     }
@@ -81,10 +82,10 @@ $toolsCallReq = @{
     params = @{
         name = "recall_add"
         arguments = @{
-            question = "ModelSession: $sessionId"
+            question = "AgentSession: $sessionId"
             answer = $entity
             evidence = @("Session ended at $timestamp")
-            tags = "kilo session ModelSession $($topics -replace ',', ' ')"
+            tags = "agent session AgentSession $($topics -replace ',', ' ')"
             project = (Split-Path $workingTree -Leaf)
             session_id = $sessionId
             source = "session_end"
@@ -140,7 +141,7 @@ try {
     }
     
     $resultText = $callResult.result.content[0].text
-    Write-Host "Added ModelSession: $resultText" -ForegroundColor Green
+    Write-Host "Added AgentSession: $resultText" -ForegroundColor Green
     
 }
 finally {
@@ -150,7 +151,7 @@ finally {
 }
 
 # Check for bank writes this session
-$flagFile = "$env:TEMP\.kilo_mem_loaded_$PID"
+$flagFile = "$env:TEMP\.agent_mem_loaded_$PID"
 $banksWritten = $false
 
 if (Test-Path $flagFile) {
@@ -192,4 +193,4 @@ if (Test-Path $flagFile) {
     Write-Host "No session flag file found (first run?)" -ForegroundColor Gray
 }
 
-Write-Host "`n=== Kilo Session End Complete ===" -ForegroundColor Cyan
+Write-Host "`n=== Agent Session End Complete ===" -ForegroundColor Cyan
